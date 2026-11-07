@@ -26,6 +26,7 @@ internal sealed class TrayAppContext : ApplicationContext
     private readonly ToolStripMenuItem _hotkeyItem;
 
     private FlyoutForm? _flyout;
+    private SettingsForm? _settingsForm;
     private Icon? _trayIcon;
     private bool _suppressMenuEvents;
     private bool _applying;
@@ -104,6 +105,19 @@ internal sealed class TrayAppContext : ApplicationContext
         RestoreAll();
         ShowFirstRunTip();
 
+        // "NightTint.exe --settings"：启动即打开设置面板
+        if (Environment.GetCommandLineArgs().Any(a => string.Equals(a, "--settings", StringComparison.OrdinalIgnoreCase)))
+        {
+            var settingsTimer = new System.Windows.Forms.Timer { Interval = 250 };
+            settingsTimer.Tick += (_, _) =>
+            {
+                settingsTimer.Stop();
+                settingsTimer.Dispose();
+                ShowSettings();
+            };
+            settingsTimer.Start();
+        }
+
         // "NightTint.exe --show"：启动即弹面板
         if (Environment.GetCommandLineArgs().Any(a => string.Equals(a, "--show", StringComparison.OrdinalIgnoreCase)))
         {
@@ -148,6 +162,9 @@ internal sealed class TrayAppContext : ApplicationContext
             presets.DropDownItems.Add(item);
         }
 
+        var settings = new ToolStripMenuItem("设置…");
+        settings.Click += (_, _) => ShowSettings();
+
         var refresh = new ToolStripMenuItem("刷新显示器");
         refresh.Click += (_, _) => RefreshDisplays();
 
@@ -160,6 +177,7 @@ internal sealed class TrayAppContext : ApplicationContext
         menu.Items.Add(open);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(presets);
+        menu.Items.Add(settings);
         menu.Items.Add(_startupItem);
         menu.Items.Add(_wheelItem);
         menu.Items.Add(_hotkeyItem);
@@ -192,7 +210,7 @@ internal sealed class TrayAppContext : ApplicationContext
         _settings.StartWithWindows = enabled;
         StartupRegistrar.Apply(enabled);
         _startupItem.Checked = enabled;
-        if (_flyout is not null) _flyout.SetToggleStates(_settings.StartWithWindows, _settings.WheelOnTray);
+        _settingsForm?.SetStates(_settings.StartWithWindows, _settings.WheelOnTray, _settings.HotkeysEnabled, _settings.RestoreOnStartup);
         ScheduleSave();
     }
 
@@ -201,7 +219,7 @@ internal sealed class TrayAppContext : ApplicationContext
         _settings.WheelOnTray = enabled;
         _wheelHook.Enabled = enabled;
         _wheelItem.Checked = enabled;
-        if (_flyout is not null) _flyout.SetToggleStates(_settings.StartWithWindows, _settings.WheelOnTray);
+        _settingsForm?.SetStates(_settings.StartWithWindows, _settings.WheelOnTray, _settings.HotkeysEnabled, _settings.RestoreOnStartup);
         ScheduleSave();
     }
 
@@ -235,7 +253,6 @@ internal sealed class TrayAppContext : ApplicationContext
             flyout.Bind(targets, _settings.Step);
 
         flyout.SyncValues();
-        flyout.SetToggleStates(_settings.StartWithWindows, _settings.WheelOnTray);
         flyout.ShowNearTray(takeFocus);
     }
 
@@ -246,8 +263,33 @@ internal sealed class TrayAppContext : ApplicationContext
         _flyout = new FlyoutForm();
         _flyout.ValueChanged += OnRowValueChanged;
         _flyout.RefreshRequested += RefreshDisplays;
-        _flyout.StartupToggled += SetStartWithWindows;
-        _flyout.WheelToggled += SetWheelEnabled;
+        _flyout.SettingsRequested += ShowSettings;
+    }
+
+    private void ShowSettings()
+    {
+        if (_settingsForm is null)
+        {
+            _settingsForm = new SettingsForm();
+            _settingsForm.StartupToggled += SetStartWithWindows;
+            _settingsForm.WheelToggled += SetWheelEnabled;
+            _settingsForm.HotkeysToggled += enabled =>
+            {
+                _settings.HotkeysEnabled = enabled;
+                RegisterHotKeys();
+                ScheduleSave();
+            };
+            _settingsForm.RestoreToggled += enabled =>
+            {
+                _settings.RestoreOnStartup = enabled;
+                ScheduleSave();
+                if (enabled) RestoreAll();
+            };
+        }
+
+        _settingsForm.SetStates(_settings.StartWithWindows, _settings.WheelOnTray,
+            _settings.HotkeysEnabled, _settings.RestoreOnStartup);
+        _settingsForm.ShowCentered();
     }
 
     private void OnRowValueChanged(TintRow row, int strength, bool committed)
@@ -498,6 +540,7 @@ internal sealed class TrayAppContext : ApplicationContext
             _trayIcon?.Dispose();
 
             _flyout?.Dispose();
+            _settingsForm?.Dispose();
             _gamma.Dispose();
         }
 

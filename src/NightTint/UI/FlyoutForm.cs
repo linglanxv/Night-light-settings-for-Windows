@@ -13,11 +13,7 @@ internal sealed class FlyoutForm : Form
     private const int PadBase = 16;
     private const int HeaderBase = 44;
     private const int FooterBase = 30;
-    private const int ToggleBase = 36;
-
     private readonly List<TintRow> _rows = new();
-    private readonly ToggleRow _startupToggle;
-    private readonly ToggleRow _wheelToggle;
     private readonly Font _titleFont;
     private readonly Font _hintFont;
     private readonly Font _glyphFont;
@@ -25,11 +21,13 @@ internal sealed class FlyoutForm : Form
     private readonly System.Windows.Forms.Timer _autoHideTimer;
     private int _fadeElapsed;
     private Rectangle _refreshHitRect = Rectangle.Empty;
+    private Rectangle _settingsHitRect = Rectangle.Empty;
+    private bool _hoverRefresh;
+    private bool _hoverSettings;
 
     public event Action<TintRow, int, bool>? ValueChanged;
     public event Action? RefreshRequested;
-    public event Action<bool>? StartupToggled;
-    public event Action<bool>? WheelToggled;
+    public event Action? SettingsRequested;
 
     public FlyoutForm()
     {
@@ -46,14 +44,8 @@ internal sealed class FlyoutForm : Form
 
         _titleFont = Theme.UiFont(15f, FontStyle.Bold);
         _hintFont = Theme.UiFont(11.5f);
-        _glyphFont = Theme.UiFont(15f);
-
-        _startupToggle = new ToggleRow("开机自动启动", true);
-        _startupToggle.Toggled += (_, value) => StartupToggled?.Invoke(value);
-        _wheelToggle = new ToggleRow("托盘滚轮调节", true);
-        _wheelToggle.Toggled += (_, value) => WheelToggled?.Invoke(value);
-        Controls.Add(_startupToggle);
-        Controls.Add(_wheelToggle);
+        // Segoe MDL2 Assets：Windows 自带的图标字体（齿轮 / 刷新）
+        _glyphFont = new Font("Segoe MDL2 Assets", 14f, FontStyle.Regular, GraphicsUnit.Pixel);
 
         _fadeTimer = new System.Windows.Forms.Timer { Interval = 16 };
         _fadeTimer.Tick += (_, _) =>
@@ -94,12 +86,6 @@ internal sealed class FlyoutForm : Form
     private int Px(float value) => (int)Math.Round(value * DpiScale);
 
     public IReadOnlyList<TintRow> Rows => _rows;
-
-    public void SetToggleStates(bool startup, bool wheel)
-    {
-        _startupToggle.Checked = startup;
-        _wheelToggle.Checked = wheel;
-    }
 
     /// <summary>按当前显示器列表重建 UI。</summary>
     public void Bind(IReadOnlyList<DisplayTarget> targets, int step)
@@ -165,11 +151,8 @@ internal sealed class FlyoutForm : Form
         int pad = Px(PadBase);
         int header = Px(HeaderBase);
         int footer = Px(FooterBase);
-        int divider = Px(9);
-        int toggleH = _startupToggle.PreferredHeight;
-
         int contentHeight = _rows.Count == 0 ? Px(52) : _rows.Sum(r => r.PreferredHeight);
-        int height = header + contentHeight + divider + toggleH * 2 + footer + Px(4);
+        int height = header + contentHeight + footer + Px(6);
 
         ClientSize = new Size(width, height);
 
@@ -180,15 +163,6 @@ internal sealed class FlyoutForm : Form
             row.Height = row.PreferredHeight;
             row.Location = new Point(pad, y);
             y += row.PreferredHeight;
-        }
-
-        y += divider;
-        foreach (var toggle in new[] { _startupToggle, _wheelToggle })
-        {
-            toggle.Width = width - pad * 2;
-            toggle.Height = toggleH;
-            toggle.Location = new Point(pad, y);
-            y += toggleH;
         }
 
         UpdateWindowShape();
@@ -235,7 +209,13 @@ internal sealed class FlyoutForm : Form
 
         int glyphSize = Px(26);
         _refreshHitRect = new Rectangle(Width - pad - glyphSize, Px(9), glyphSize, glyphSize);
-        TextRenderer.DrawText(g, "\u21BB", _glyphFont, _refreshHitRect, Theme.TextDim,
+        _settingsHitRect = new Rectangle(_refreshHitRect.Left - glyphSize - Px(2), Px(9), glyphSize, glyphSize);
+
+        TextRenderer.DrawText(g, "\uE72C", _glyphFont, _refreshHitRect,
+            _hoverRefresh ? Theme.Text : Theme.TextDim,
+            TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix);
+        TextRenderer.DrawText(g, "\uE713", _glyphFont, _settingsHitRect,
+            _hoverSettings ? Theme.Text : Theme.TextDim,
             TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix);
 
         if (_rows.Count == 0)
@@ -244,11 +224,6 @@ internal sealed class FlyoutForm : Form
                 new Rectangle(pad, Px(HeaderBase), Width - pad * 2, Px(36)),
                 Theme.TextFaint, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix);
         }
-
-        // 开关区域上方的分隔线
-        int dividerY = _startupToggle.Top - Px(5);
-        using (var pen = new Pen(Color.FromArgb(38, 38, 44), 1f))
-            g.DrawLine(pen, pad, dividerY, Width - pad, dividerY);
 
         string hint = "滚轮微调 · 双击关闭";
         TextRenderer.DrawText(g, hint, _hintFont,
@@ -259,14 +234,18 @@ internal sealed class FlyoutForm : Form
     protected override void OnMouseMove(MouseEventArgs e)
     {
         base.OnMouseMove(e);
-        Cursor = _refreshHitRect.Contains(e.Location) ? Cursors.Hand : Cursors.Default;
+        _hoverRefresh = _refreshHitRect.Contains(e.Location);
+        _hoverSettings = _settingsHitRect.Contains(e.Location);
+        Cursor = _hoverRefresh || _hoverSettings ? Cursors.Hand : Cursors.Default;
+        Invalidate();
     }
 
     protected override void OnMouseUp(MouseEventArgs e)
     {
         base.OnMouseUp(e);
-        if (e.Button == MouseButtons.Left && _refreshHitRect.Contains(e.Location))
-            RefreshRequested?.Invoke();
+        if (e.Button != MouseButtons.Left) return;
+        if (_refreshHitRect.Contains(e.Location)) RefreshRequested?.Invoke();
+        else if (_settingsHitRect.Contains(e.Location)) SettingsRequested?.Invoke();
     }
 
     protected override void OnMouseDown(MouseEventArgs e)
