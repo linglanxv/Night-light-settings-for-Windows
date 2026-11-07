@@ -1,0 +1,506 @@
+using System.Diagnostics;
+using Microsoft.Win32;
+using NightTint.Core;
+using NightTint.Settings;
+using NightTint.UI;
+
+namespace NightTint;
+
+/// <summary>
+/// 托盘主控：图标、夜间模式面板、快捷键、滚轮、强度记忆、显示器热插拔 / 锁屏 / 唤醒后重新套用。
+/// </summary>
+internal sealed class TrayAppContext : ApplicationContext
+{
+    private readonly AppSettings _settings;
+    private readonly GammaService _gamma = new();
+    private readonly TintApplier _applier;
+    private readonly NotifyIcon _tray;
+    private readonly ContextMenuStrip _menu;
+    private readonly HotKeyWindow _hotKeys = new();
+    private readonly TrayWheelHook _wheelHook = new();
+    private readonly System.Windows.Forms.Timer _saveTimer;
+    private readonly System.Windows.Forms.Timer _displayTimer;
+    private readonly SynchronizationContext _ui;
+    private readonly ToolStripMenuItem _startupItem;
+    private readonly ToolStripMenuItem _wheelItem;
+    private readonly ToolStripMenuItem _hotkeyItem;
+
+    private FlyoutForm? _flyout;
+    private Icon? _trayIcon;
+    private bool _suppressMenuEvents;
+    private bool _applying;
+    private bool _hotkeyWarned;
+    private bool _disposed;
+
+    public TrayAppContext()
+    {
+        _ui = SynchronizationContext.Current ?? new WindowsFormsSynchronizationContext();
+
+        _settings = AppSettings.Load();
+        _gamma.Refresh();
+        _applier = new TintApplier(_gamma);
+
+        _saveTimer = new System.Windows.Forms.Timer { Interval = 600 };
+        _saveTimer.Tick += (_, _) =>
+        {
+            _saveTimer.Stop();
+            _settings.Save();
+        };
+
+        _displayTimer = new System.Windows.Forms.Timer { Interval = 900 };
+        _displayTimer.Tick += (_, _) =>
+        {
+            _displayTimer.Stop();
+            RefreshDisplays();
+        };
+
+        _startupItem = new ToolStripMenuItem("开机自动启动") { CheckOnClick = true };
+        _startupItem.Click += (_, _) =>
+        {
+            if (_suppressMenuEvents) return;
+            SetStartWithWindows(_startupItem.Checked);
+        };
+
+        _wheelItem = new ToolStripMenuItem("托盘滚轮调节") { CheckOnClick = true };
+        _wheelItem.Click += (_, _) =>
+        {
+            if (_suppressMenuEvents) return;
+            SetWheelEnabled(_wheelItem.Checked);
+        };
+
+        _hotkeyItem = new ToolStripMenuItem("全局快捷键 (Ctrl+Alt+Shift+↑/↓)") { CheckOnClick = true };
+        _hotkeyItem.Click += (_, _) =>
+        {
+            if (_suppressMenuEvents) return;
+            _settings.HotkeysEnabled = _hotkeyItem.Checked;
+            RegisterHotKeys();
+            ScheduleSave();
+        };
+
+        _menu = BuildMenu();
+        _menu.Opening += (_, _) => SyncMenuState();
+
+        _tray = new NotifyIcon
+        {
+            Visible = true,
+            ContextMenuStrip = _menu,
+            Text = "NightTint"
+        };
+        _tray.MouseUp += OnTrayMouseUp;
+
+        _hotKeys.HotKeyPressed += OnHotKey;
+        RegisterHotKeys();
+
+        _wheelHook.Enabled = _settings.WheelOnTray;
+        _wheelHook.WheelTurned += OnWheelTurned;
+        if (_settings.WheelOnTray) _wheelHook.Start();
+
+        StartupRegistrar.Apply(_settings.StartWithWindows);
+
+        SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
+        SystemEvents.SessionSwitch += OnSessionSwitch;
+        SystemEvents.PowerModeChanged += OnPowerModeChanged;
+
+        RestoreAll();
+        ShowFirstRunTip();
+
+        // "NightTint.exe --show"：启动即弹面板
+        if (Environment.GetCommandLineArgs().Any(a => string.Equals(a, "--show", StringComparison.OrdinalIgnoreCase)))
+        {
+            var timer = new System.Windows.Forms.Timer { Interval = 250 };
+            timer.Tick += (_, _) =>
+            {
+                timer.Stop();
+                timer.Dispose();
+                ShowPanel(takeFocus: true);
+            };
+            timer.Start();
+        }
+    }
+
+    // =====================================================================
+    // 菜单
+    // =====================================================================
+
+    private ContextMenuStrip BuildMenu()
+    {
+        var menu = new ContextMenuStrip
+        {
+            Renderer = new DarkMenuRenderer(),
+            BackColor = Theme.BackgroundElevated,
+            ForeColor = Theme.Text,
+            Font = new Font("Segoe UI", 9f)
+        };
+
+        var open = new ToolStripMenuItem("打开夜间模式面板") { Font = new Font("Segoe UI", 9f, FontStyle.Bold) };
+        open.Click += (_, _) => ToggleFlyout();
+
+        var presets = new ToolStripMenuItem("全部显示器强度");
+        var turnOff = new ToolStripMenuItem("关闭夜间模式 (0%)");
+        turnOff.Click += (_, _) => ApplyToAll(0);
+        presets.DropDownItems.Add(turnOff);
+        presets.DropDownItems.Add(new ToolStripSeparator());
+        foreach (int strength in new[] { 25, 50, 75, 100 })
+        {
+            int value = strength;
+            var item = new ToolStripMenuItem($"{value}% · {ColorTemperature.Describe(value)}（{ColorTemperature.StrengthToKelvin(value)}K）");
+            item.Click += (_, _) => ApplyToAll(value);
+            presets.DropDownItems.Add(item);
+        }
+
+        var refresh = new ToolStripMenuItem("刷新显示器");
+        refresh.Click += (_, _) => RefreshDisplays();
+
+        var openConfig = new ToolStripMenuItem("打开配置文件位置");
+        openConfig.Click += (_, _) => OpenConfigFolder();
+
+        var exit = new ToolStripMenuItem("退出 NightTint");
+        exit.Click += (_, _) => ExitThread();
+
+        menu.Items.Add(open);
+        menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add(presets);
+        menu.Items.Add(_startupItem);
+        menu.Items.Add(_wheelItem);
+        menu.Items.Add(_hotkeyItem);
+        menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add(refresh);
+        menu.Items.Add(openConfig);
+        menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add(exit);
+
+        return menu;
+    }
+
+    private void SyncMenuState()
+    {
+        _suppressMenuEvents = true;
+        try
+        {
+            _startupItem.Checked = _settings.StartWithWindows;
+            _wheelItem.Checked = _settings.WheelOnTray;
+            _hotkeyItem.Checked = _settings.HotkeysEnabled;
+        }
+        finally
+        {
+            _suppressMenuEvents = false;
+        }
+    }
+
+    private void SetStartWithWindows(bool enabled)
+    {
+        _settings.StartWithWindows = enabled;
+        StartupRegistrar.Apply(enabled);
+        _startupItem.Checked = enabled;
+        if (_flyout is not null) _flyout.SetToggleStates(_settings.StartWithWindows, _settings.WheelOnTray);
+        ScheduleSave();
+    }
+
+    private void SetWheelEnabled(bool enabled)
+    {
+        _settings.WheelOnTray = enabled;
+        _wheelHook.Enabled = enabled;
+        _wheelItem.Checked = enabled;
+        if (_flyout is not null) _flyout.SetToggleStates(_settings.StartWithWindows, _settings.WheelOnTray);
+        ScheduleSave();
+    }
+
+    // =====================================================================
+    // 托盘 / 面板
+    // =====================================================================
+
+    private void OnTrayMouseUp(object? sender, MouseEventArgs e)
+    {
+        if (e.Button != MouseButtons.Left) return;
+        ToggleFlyout();
+    }
+
+    private void ToggleFlyout()
+    {
+        if (_flyout is { Visible: true })
+        {
+            _flyout.Hide();
+            return;
+        }
+        ShowPanel(takeFocus: true);
+    }
+
+    private void ShowPanel(bool takeFocus)
+    {
+        EnsureFlyout();
+        var targets = _gamma.Targets;
+        var flyout = _flyout!;
+
+        if (!flyout.MatchesTargets(targets))
+            flyout.Bind(targets, _settings.Step);
+
+        flyout.SyncValues();
+        flyout.SetToggleStates(_settings.StartWithWindows, _settings.WheelOnTray);
+        flyout.ShowNearTray(takeFocus);
+    }
+
+    private void EnsureFlyout()
+    {
+        if (_flyout is not null) return;
+
+        _flyout = new FlyoutForm();
+        _flyout.ValueChanged += OnRowValueChanged;
+        _flyout.RefreshRequested += RefreshDisplays;
+        _flyout.StartupToggled += SetStartWithWindows;
+        _flyout.WheelToggled += SetWheelEnabled;
+    }
+
+    private void OnRowValueChanged(TintRow row, int strength, bool committed)
+    {
+        if (_applying) return;
+        ApplyStrength(row.Target, strength);
+        if (committed) ScheduleSave();
+    }
+
+    /// <summary>统一入口：更新状态 + 排队写入 gamma + 记忆。</summary>
+    private void ApplyStrength(DisplayTarget target, int strength)
+    {
+        strength = ColorTemperature.ClampStrength(strength);
+        target.Strength = strength;
+        _applier.Set(target.Key, target.Kelvin);
+        _settings.RememberStrength(target.Key, strength);
+        ScheduleSave();
+        UpdateTrayIcon();
+
+        if (_flyout is { Visible: true })
+        {
+            _applying = true;
+            try { _flyout.SyncValues(); }
+            finally { _applying = false; }
+        }
+    }
+
+    private void ApplyToAll(int strength)
+    {
+        foreach (var target in _gamma.Targets)
+            ApplyStrength(target, strength);
+    }
+
+    private void NudgeAll(int deltaPercent, bool showPanel)
+    {
+        var targets = _gamma.Targets;
+        if (targets.Count == 0) return;
+
+        foreach (var target in targets)
+            ApplyStrength(target, target.Strength + deltaPercent);
+
+        if (showPanel)
+        {
+            EnsureFlyout();
+            if (!_flyout!.MatchesTargets(_gamma.Targets))
+                _flyout.Bind(_gamma.Targets, _settings.Step);
+            _flyout.SyncValues();
+            _flyout.ShowNearTray(takeFocus: false);
+        }
+    }
+
+    // =====================================================================
+    // 快捷键 / 滚轮
+    // =====================================================================
+
+    private void RegisterHotKeys()
+    {
+        _hotKeys.UnregisterAll();
+        if (!_settings.HotkeysEnabled) return;
+
+        // Ctrl+Alt+Shift 组合，避开 Intel 核显占用的 Ctrl+Alt+↑/↓
+        int modifiers = Native.MOD_CONTROL | Native.MOD_ALT | Native.MOD_SHIFT | Native.MOD_NOREPEAT;
+        bool up = _hotKeys.Register(HotKeyWindow.IdIncrease, modifiers, Native.VK_UP);
+        bool down = _hotKeys.Register(HotKeyWindow.IdDecrease, modifiers, Native.VK_DOWN);
+        _hotKeys.Register(HotKeyWindow.IdTogglePanel, Native.MOD_CONTROL | Native.MOD_ALT | Native.MOD_NOREPEAT, 0x42);
+
+        if ((!up || !down) && !_hotkeyWarned)
+        {
+            _hotkeyWarned = true;
+            try
+            {
+                _tray.ShowBalloonTip(4000, "NightTint 快捷键被占用",
+                    "Ctrl+Alt+Shift+↑/↓ 注册失败，可能被其它软件占用；Ctrl+Alt+B 打开面板仍然可用。", ToolTipIcon.Warning);
+            }
+            catch { }
+        }
+    }
+
+    private void OnHotKey(int id)
+    {
+        switch (id)
+        {
+            case HotKeyWindow.IdIncrease:
+                NudgeAll(_settings.Step, showPanel: true);
+                break;
+            case HotKeyWindow.IdDecrease:
+                NudgeAll(-_settings.Step, showPanel: true);
+                break;
+            case HotKeyWindow.IdTogglePanel:
+                ToggleFlyout();
+                break;
+        }
+    }
+
+    private void OnWheelTurned(int direction) =>
+        NudgeAll(direction * _settings.Step, showPanel: true);
+
+    // =====================================================================
+    // 显示器 / 会话生命周期
+    // =====================================================================
+
+    private void OnDisplaySettingsChanged(object? sender, EventArgs e) =>
+        RunOnUi(() =>
+        {
+            _displayTimer.Stop();
+            _displayTimer.Start();
+        });
+
+    private void OnSessionSwitch(object? sender, SessionSwitchEventArgs e)
+    {
+        if (e.Reason is SessionSwitchReason.SessionUnlock or SessionSwitchReason.ConsoleConnect
+            or SessionSwitchReason.RemoteConnect or SessionSwitchReason.SessionLogon)
+        {
+            RunOnUi(RestoreAll);
+        }
+    }
+
+    private void OnPowerModeChanged(object? sender, PowerModeChangedEventArgs e)
+    {
+        if (e.Mode == PowerModes.Resume) RunOnUi(RestoreAll);
+    }
+
+    private void RefreshDisplays()
+    {
+        Task.Run(() =>
+        {
+            try { _gamma.Refresh(); } catch { }
+
+            RunOnUi(() =>
+            {
+                var targets = _gamma.Targets;
+                if (_flyout is not null)
+                {
+                    if (!_flyout.MatchesTargets(targets))
+                        _flyout.Bind(targets, _settings.Step);
+                    else
+                        _flyout.SyncValues();
+                }
+
+                RestoreAll();
+                UpdateTrayIcon();
+            });
+        });
+    }
+
+    /// <summary>把记住的强度重新套到所有显示器（开机 / 解锁 / 插拔后调用）。</summary>
+    private void RestoreAll()
+    {
+        foreach (var target in _gamma.Targets)
+        {
+            int saved = _settings.RestoreOnStartup ? _settings.GetSavedStrength(target.Key) : -1;
+            target.Strength = saved >= 0 ? saved : 0;
+            _applier.Set(target.Key, target.Kelvin);
+        }
+
+        UpdateTrayIcon();
+        if (_flyout is { Visible: true }) _flyout.SyncValues();
+    }
+
+    // =====================================================================
+    // 图标 / 其它
+    // =====================================================================
+
+    private void UpdateTrayIcon()
+    {
+        var targets = _gamma.Targets;
+        int strength = targets.Count > 0 ? (int)Math.Round(targets.Average(t => t.Strength)) : 0;
+        int kelvin = ColorTemperature.StrengthToKelvin(strength);
+
+        var icon = TrayIconFactory.Create(kelvin);
+        var previous = _trayIcon;
+        _trayIcon = icon;
+        _tray.Icon = icon;
+        _tray.Text = strength <= 0 ? "NightTint · 夜间模式关闭" : $"NightTint · {strength}% ({kelvin}K)";
+        previous?.Dispose();
+    }
+
+    private void ScheduleSave()
+    {
+        _saveTimer.Stop();
+        _saveTimer.Start();
+    }
+
+    private void RunOnUi(Action action)
+    {
+        _ui.Post(_ =>
+        {
+            try { action(); } catch { }
+        }, null);
+    }
+
+    private void OpenConfigFolder()
+    {
+        try
+        {
+            Directory.CreateDirectory(AppSettings.SettingsDirectory);
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = "explorer.exe",
+                Arguments = $"/select,\"{AppSettings.FilePath}\"",
+                UseShellExecute = true
+            });
+        }
+        catch { }
+    }
+
+    private void ShowFirstRunTip()
+    {
+        if (_settings.FirstRunTipShown) return;
+        try
+        {
+            _tray.ShowBalloonTip(5000, "NightTint 已就绪",
+                "左键点托盘图标打开面板；拖滑块调强度，0 = 关闭，100 = 最暖。", ToolTipIcon.None);
+            _settings.FirstRunTipShown = true;
+            ScheduleSave();
+        }
+        catch { }
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing && !_disposed)
+        {
+            _disposed = true;
+
+            SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
+            SystemEvents.SessionSwitch -= OnSessionSwitch;
+            SystemEvents.PowerModeChanged -= OnPowerModeChanged;
+
+            _saveTimer.Stop();
+            _saveTimer.Dispose();
+            _displayTimer.Stop();
+            _displayTimer.Dispose();
+
+            _hotKeys.Dispose();
+            _wheelHook.Dispose();
+
+            _settings.Save();
+
+            // 退出前把屏幕恢复成中性白
+            foreach (var target in _gamma.Targets)
+                _gamma.Apply(target, ColorTemperature.NeutralKelvin);
+
+            _applier.Dispose();
+
+            _tray.Visible = false;
+            _tray.Dispose();
+            _trayIcon?.Dispose();
+
+            _flyout?.Dispose();
+            _gamma.Dispose();
+        }
+
+        base.Dispose(disposing);
+    }
+}
