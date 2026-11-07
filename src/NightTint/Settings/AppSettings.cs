@@ -9,9 +9,15 @@ namespace NightTint.Settings;
 /// </summary>
 internal sealed class AppSettings
 {
-    public const int CurrentVersion = 2;
+    public const int CurrentVersion = 3;
 
     public int Version { get; set; } = CurrentVersion;
+
+    /// <summary>
+    /// 夜间模式总开关。关闭时屏幕立刻恢复中性白，但**不清除**记住的强度，
+    /// 重新开启后原样恢复——这就是「临时关闭而不退出软件」。
+    /// </summary>
+    public bool Enabled { get; set; } = true;
 
     /// <summary>开机自动启动（面板和右键菜单里都有开关）。</summary>
     public bool StartWithWindows { get; set; } = true;

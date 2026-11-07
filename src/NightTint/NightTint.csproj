@@ -11,9 +11,14 @@
     <AssemblyName>NightTint</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
-    <Version>1.0.0</Version>
-    <Product>NightTint</Product>
-    <Description>Windows 10/11 夜间色温调节托盘小工具，按显示器记忆上次设置。</Description>
+    <Version>1.1.0</Version>
+    <AssemblyVersion>1.1.0.0</AssemblyVersion>
+    <FileVersion>1.1.0.0</FileVersion>
+    <AssemblyTitle>Night light settings</AssemblyTitle>
+    <Product>Night light settings</Product>
+    <Company>linglanxv</Company>
+    <Copyright>Copyright © 2026 linglanxv · MIT License</Copyright>
+    <Description>Windows 夜间模式强度调节任务栏托盘 - Windows 10/11 night light strength tray slider with per-monitor memory</Description>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
     <InvariantGlobalization>true</InvariantGlobalization>
     <DebugType>embedded</DebugType>

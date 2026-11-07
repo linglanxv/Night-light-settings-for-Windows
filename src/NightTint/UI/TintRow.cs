@@ -15,6 +15,7 @@ internal sealed class TintRow : Control
     private int _strength;
     private bool _dragging;
     private bool _hovering;
+    private bool _paused;
 
     /// <summary>(row, strength, committed)。committed=true 表示本次拖动 / 滚轮结束。</summary>
     public event Action<TintRow, int, bool>? ValueChanged;
@@ -35,11 +36,29 @@ internal sealed class TintRow : Control
         Cursor = Cursors.Hand;
     }
 
+    protected override void OnEnabledChanged(EventArgs e)
+    {
+        base.OnEnabledChanged(e);
+        Invalidate();
+    }
+
     public string MonitorKey => _target.Key;
 
     public DisplayTarget Target => _target;
 
     public int Step { get; set; } = 5;
+
+    /// <summary>夜间模式被临时停用：整行压暗显示，但拖动仍会重新启用。</summary>
+    public bool Paused
+    {
+        get => _paused;
+        set
+        {
+            if (_paused == value) return;
+            _paused = value;
+            Invalidate();
+        }
+    }
 
     public int Strength
     {
@@ -144,6 +163,13 @@ internal sealed class TintRow : Control
             g.DrawEllipse(focusPen, thumbX - thumbR - Px(3), centerY - thumbR - Px(3),
                 (thumbR + Px(3)) * 2, (thumbR + Px(3)) * 2);
         }
+
+        // 暂停态：整体压暗，一眼看出当前没有生效（数值仍然可见＝记住的位置还在）
+        if (_paused)
+        {
+            using var veil = new SolidBrush(Color.FromArgb(165, Theme.Background));
+            g.FillRectangle(veil, ClientRectangle);
+        }
     }
 
     protected override void OnMouseEnter(EventArgs e)
@@ -160,10 +186,13 @@ internal sealed class TintRow : Control
         Invalidate();
     }
 
+    /// <summary>仅在支持 DDC-free gamma 且未被暂停时可交互。</summary>
+    private bool Interactive => _target.Applicable && !_paused;
+
     protected override void OnMouseDown(MouseEventArgs e)
     {
         base.OnMouseDown(e);
-        if (!_target.Applicable) return;
+        if (!Interactive) return;
 
         Focus();
         if (e.Button == MouseButtons.Left)
@@ -192,6 +221,7 @@ internal sealed class TintRow : Control
     protected override void OnDoubleClick(EventArgs e)
     {
         base.OnDoubleClick(e);
+        if (!Interactive) return;
         // 双击关闭夜间模式
         SetStrength(0, commit: true);
     }
@@ -199,7 +229,7 @@ internal sealed class TintRow : Control
     protected override void OnMouseWheel(MouseEventArgs e)
     {
         base.OnMouseWheel(e);
-        if (!_target.Applicable) return;
+        if (!Interactive) return;
         SetStrength(_strength + (e.Delta > 0 ? Step : -Step), commit: true);
     }
 
@@ -208,7 +238,7 @@ internal sealed class TintRow : Control
     protected override void OnKeyDown(KeyEventArgs e)
     {
         base.OnKeyDown(e);
-        if (!_target.Applicable) return;
+        if (!Interactive) return;
 
         int? target = e.KeyCode switch
         {

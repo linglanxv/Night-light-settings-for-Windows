@@ -5,7 +5,7 @@ namespace NightTint.UI;
 
 /// <summary>
 /// 托盘弹出的夜间模式面板（Twinkle Tray 风格 flyout）：
-/// 每台显示器一行 0~100 强度滑块，底部带「开机自动启动」等开关。
+/// 每台显示器一行 0~100 强度滑块，除此之外不放其它控件（设置项在独立设置面板里）。
 /// </summary>
 internal sealed class FlyoutForm : Form
 {
@@ -24,6 +24,7 @@ internal sealed class FlyoutForm : Form
     private Rectangle _settingsHitRect = Rectangle.Empty;
     private bool _hoverRefresh;
     private bool _hoverSettings;
+    private bool _paused;
 
     public event Action<TintRow, int, bool>? ValueChanged;
     public event Action? RefreshRequested;
@@ -40,7 +41,7 @@ internal sealed class FlyoutForm : Form
         KeyPreview = true;
         AutoScaleMode = AutoScaleMode.None;
         BackColor = Theme.Background;
-        Text = "NightTint";
+        Text = AppInfo.DisplayName;
 
         _titleFont = Theme.UiFont(15f, FontStyle.Bold);
         _hintFont = Theme.UiFont(11.5f);
@@ -102,7 +103,7 @@ internal sealed class FlyoutForm : Form
 
         foreach (var target in targets)
         {
-            var row = new TintRow(target, step);
+            var row = new TintRow(target, step) { Paused = _paused };
             row.ValueChanged += OnRowValueChanged;
             Controls.Add(row);
             _rows.Add(row);
@@ -138,6 +139,15 @@ internal sealed class FlyoutForm : Form
     public void UpdateStep(int step)
     {
         foreach (var row in _rows) row.Step = step;
+    }
+
+    /// <summary>暂停态：滑块整体压暗并提示，提示用户右键菜单可恢复。</summary>
+    public void SetPaused(bool paused)
+    {
+        if (_paused == paused) return;
+        _paused = paused;
+        foreach (var row in _rows) row.Paused = paused;
+        Invalidate();
     }
 
     private void OnRowValueChanged(TintRow row, int strength, bool committed)
@@ -203,9 +213,10 @@ internal sealed class FlyoutForm : Form
         using (var borderPen = new Pen(Theme.Border, 1f))
             g.DrawPath(borderPen, borderPath);
 
-        TextRenderer.DrawText(g, "夜间模式", _titleFont,
-            new Rectangle(pad, Px(12), Px(220), Px(24)),
-            Theme.Text, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix);
+        TextRenderer.DrawText(g, AppInfo.DisplayName, _titleFont,
+            new Rectangle(pad, Px(12), Px(230), Px(24)),
+            _paused ? Theme.TextDim : Theme.Text,
+            TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.EndEllipsis);
 
         int glyphSize = Px(26);
         _refreshHitRect = new Rectangle(Width - pad - glyphSize, Px(9), glyphSize, glyphSize);
@@ -225,10 +236,13 @@ internal sealed class FlyoutForm : Form
                 Theme.TextFaint, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix);
         }
 
-        string hint = "滚轮微调 · 双击关闭";
+        string hint = _paused
+            ? "已暂停 · 右键托盘菜单可重新启用"
+            : "滚轮微调 · 双击关闭";
         TextRenderer.DrawText(g, hint, _hintFont,
             new Rectangle(pad, Height - Px(FooterBase), Width - pad * 2, Px(24)),
-            Theme.TextFaint, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix);
+            _paused ? Theme.Accent : Theme.TextFaint,
+            TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix);
     }
 
     protected override void OnMouseMove(MouseEventArgs e)

@@ -10,7 +10,7 @@ namespace NightTint.UI;
 /// </summary>
 internal static class TrayIconFactory
 {
-    public static Icon Create(int kelvin)
+    public static Icon Create(int kelvin, bool paused = false)
     {
         const int size = 32;
         Color tint = ColorTemperature.ToColor(kelvin);
@@ -27,6 +27,18 @@ internal static class TrayIconFactory
             float cy = size / 2f;
             float radius = 10.5f;
 
+            // 暂停态：整颗图标变成灰点，一眼看出软件被临时关掉了
+            if (paused)
+            {
+                using (var ring = new Pen(Color.FromArgb(150, 118, 118, 126), 1.6f))
+                    g.DrawEllipse(ring, cx - radius - 1.2f, cy - radius - 1.2f, (radius + 1.2f) * 2, (radius + 1.2f) * 2);
+                using (var brush = new SolidBrush(Color.FromArgb(190, 78, 78, 86)))
+                    g.FillEllipse(brush, cx - radius, cy - radius, radius * 2, radius * 2);
+                using var slash = new Pen(Color.FromArgb(215, 214, 220), 2.0f);
+                g.DrawLine(slash, cx - radius * 0.72f, cy + radius * 0.72f, cx + radius * 0.72f, cy - radius * 0.72f);
+                return ToIcon(bitmap);
+            }
+
             // 外圈：中性时用灰色描边，暖色时用更饱和的同色描边
             using (var ring = new Pen(neutral ? Color.FromArgb(210, 214, 220) : Darken(tint, 0.25f), 1.6f))
                 g.DrawEllipse(ring, cx - radius - 1.2f, cy - radius - 1.2f, (radius + 1.2f) * 2, (radius + 1.2f) * 2);
@@ -42,6 +54,11 @@ internal static class TrayIconFactory
             }
         }
 
+        return ToIcon(bitmap);
+    }
+
+    private static Icon ToIcon(Bitmap bitmap)
+    {
         IntPtr handle = bitmap.GetHicon();
         try
         {

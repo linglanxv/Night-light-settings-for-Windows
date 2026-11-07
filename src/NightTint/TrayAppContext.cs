@@ -21,6 +21,7 @@ internal sealed class TrayAppContext : ApplicationContext
     private readonly System.Windows.Forms.Timer _saveTimer;
     private readonly System.Windows.Forms.Timer _displayTimer;
     private readonly SynchronizationContext _ui;
+    private readonly ToolStripMenuItem _enableItem;
     private readonly ToolStripMenuItem _startupItem;
     private readonly ToolStripMenuItem _wheelItem;
     private readonly ToolStripMenuItem _hotkeyItem;
@@ -33,7 +34,7 @@ internal sealed class TrayAppContext : ApplicationContext
     private bool _hotkeyWarned;
     private bool _disposed;
 
-    public TrayAppContext()
+    public TrayAppContext(string? initialCommand = null)
     {
         _ui = SynchronizationContext.Current ?? new WindowsFormsSynchronizationContext();
 
@@ -53,6 +54,14 @@ internal sealed class TrayAppContext : ApplicationContext
         {
             _displayTimer.Stop();
             RefreshDisplays();
+        };
+
+        // 总开关：临时停用 ≠ 退出。关闭后屏幕回到中性白，滑块位置全部记住。
+        _enableItem = new ToolStripMenuItem("启用夜间模式") { CheckOnClick = true };
+        _enableItem.Click += (_, _) =>
+        {
+            if (_suppressMenuEvents) return;
+            SetEnabled(_enableItem.Checked);
         };
 
         _startupItem = new ToolStripMenuItem("开机自动启动") { CheckOnClick = true };
@@ -85,7 +94,7 @@ internal sealed class TrayAppContext : ApplicationContext
         {
             Visible = true,
             ContextMenuStrip = _menu,
-            Text = "NightTint"
+            Text = AppInfo.DisplayName
         };
         _tray.MouseUp += OnTrayMouseUp;
 
@@ -105,30 +114,33 @@ internal sealed class TrayAppContext : ApplicationContext
         RestoreAll();
         ShowFirstRunTip();
 
-        // "NightTint.exe --settings"：启动即打开设置面板
-        if (Environment.GetCommandLineArgs().Any(a => string.Equals(a, "--settings", StringComparison.OrdinalIgnoreCase)))
-        {
-            var settingsTimer = new System.Windows.Forms.Timer { Interval = 250 };
-            settingsTimer.Tick += (_, _) =>
-            {
-                settingsTimer.Stop();
-                settingsTimer.Dispose();
-                ShowSettings();
-            };
-            settingsTimer.Start();
-        }
+        // 接收后续实例发来的命令（--show / --settings / --on / --off / --toggle）
+        InstancePipe.StartServer(cmd => RunOnUi(() => ApplyCommand(cmd)));
 
-        // "NightTint.exe --show"：启动即弹面板
-        if (Environment.GetCommandLineArgs().Any(a => string.Equals(a, "--show", StringComparison.OrdinalIgnoreCase)))
+        // 本次启动自带的命令也按同一套逻辑处理
+        if (initialCommand is not null) ApplyCommand(initialCommand);
+    }
+
+    /// <summary>处理外部命令：面板、设置、启用 / 暂停。</summary>
+    private void ApplyCommand(string command)
+    {
+        switch (command)
         {
-            var timer = new System.Windows.Forms.Timer { Interval = 250 };
-            timer.Tick += (_, _) =>
-            {
-                timer.Stop();
-                timer.Dispose();
+            case "show":
                 ShowPanel(takeFocus: true);
-            };
-            timer.Start();
+                break;
+            case "settings":
+                ShowSettings();
+                break;
+            case "on":
+                SetEnabled(true);
+                break;
+            case "off":
+                SetEnabled(false);
+                break;
+            case "toggle":
+                SetEnabled(!_settings.Enabled);
+                break;
         }
     }
 
@@ -148,6 +160,8 @@ internal sealed class TrayAppContext : ApplicationContext
 
         var open = new ToolStripMenuItem("打开夜间模式面板") { Font = new Font("Segoe UI", 9f, FontStyle.Bold) };
         open.Click += (_, _) => ToggleFlyout();
+
+        _enableItem.Font = new Font("Segoe UI", 9f, FontStyle.Bold);
 
         var presets = new ToolStripMenuItem("全部显示器强度");
         var turnOff = new ToolStripMenuItem("关闭夜间模式 (0%)");
@@ -171,10 +185,11 @@ internal sealed class TrayAppContext : ApplicationContext
         var openConfig = new ToolStripMenuItem("打开配置文件位置");
         openConfig.Click += (_, _) => OpenConfigFolder();
 
-        var exit = new ToolStripMenuItem("退出 NightTint");
+        var exit = new ToolStripMenuItem($"退出 {AppInfo.DisplayName}");
         exit.Click += (_, _) => ExitThread();
 
         menu.Items.Add(open);
+        menu.Items.Add(_enableItem);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(presets);
         menu.Items.Add(settings);
@@ -195,6 +210,7 @@ internal sealed class TrayAppContext : ApplicationContext
         _suppressMenuEvents = true;
         try
         {
+            _enableItem.Checked = _settings.Enabled;
             _startupItem.Checked = _settings.StartWithWindows;
             _wheelItem.Checked = _settings.WheelOnTray;
             _hotkeyItem.Checked = _settings.HotkeysEnabled;
@@ -205,12 +221,30 @@ internal sealed class TrayAppContext : ApplicationContext
         }
     }
 
+    /// <summary>
+    /// 夜间模式总开关。关闭只是「临时停用」：屏幕立刻回到中性白，
+    /// 记住的强度、开机自启、托盘图标全部保留，重新勾上即原样恢复。
+    /// </summary>
+    private void SetEnabled(bool enabled)
+    {
+        _settings.Enabled = enabled;
+        _enableItem.Checked = enabled;
+        _flyout?.SetPaused(!enabled);
+        _settingsForm?.SetStates(enabled, _settings.StartWithWindows, _settings.WheelOnTray,
+            _settings.HotkeysEnabled, _settings.RestoreOnStartup);
+
+        ApplyCurrentState();
+        UpdateTrayIcon();
+        ScheduleSave();
+    }
+
     private void SetStartWithWindows(bool enabled)
     {
         _settings.StartWithWindows = enabled;
         StartupRegistrar.Apply(enabled);
         _startupItem.Checked = enabled;
-        _settingsForm?.SetStates(_settings.StartWithWindows, _settings.WheelOnTray, _settings.HotkeysEnabled, _settings.RestoreOnStartup);
+        _settingsForm?.SetStates(_settings.Enabled, _settings.StartWithWindows, _settings.WheelOnTray,
+            _settings.HotkeysEnabled, _settings.RestoreOnStartup);
         ScheduleSave();
     }
 
@@ -219,7 +253,8 @@ internal sealed class TrayAppContext : ApplicationContext
         _settings.WheelOnTray = enabled;
         _wheelHook.Enabled = enabled;
         _wheelItem.Checked = enabled;
-        _settingsForm?.SetStates(_settings.StartWithWindows, _settings.WheelOnTray, _settings.HotkeysEnabled, _settings.RestoreOnStartup);
+        _settingsForm?.SetStates(_settings.Enabled, _settings.StartWithWindows, _settings.WheelOnTray,
+            _settings.HotkeysEnabled, _settings.RestoreOnStartup);
         ScheduleSave();
     }
 
@@ -264,6 +299,7 @@ internal sealed class TrayAppContext : ApplicationContext
         _flyout.ValueChanged += OnRowValueChanged;
         _flyout.RefreshRequested += RefreshDisplays;
         _flyout.SettingsRequested += ShowSettings;
+        _flyout.SetPaused(!_settings.Enabled);
     }
 
     private void ShowSettings()
@@ -271,6 +307,7 @@ internal sealed class TrayAppContext : ApplicationContext
         if (_settingsForm is null)
         {
             _settingsForm = new SettingsForm();
+            _settingsForm.EnabledToggled += SetEnabled;
             _settingsForm.StartupToggled += SetStartWithWindows;
             _settingsForm.WheelToggled += SetWheelEnabled;
             _settingsForm.HotkeysToggled += enabled =>
@@ -287,14 +324,15 @@ internal sealed class TrayAppContext : ApplicationContext
             };
         }
 
-        _settingsForm.SetStates(_settings.StartWithWindows, _settings.WheelOnTray,
+        _settingsForm.SetStates(_settings.Enabled, _settings.StartWithWindows, _settings.WheelOnTray,
             _settings.HotkeysEnabled, _settings.RestoreOnStartup);
         _settingsForm.ShowCentered();
     }
 
     private void OnRowValueChanged(TintRow row, int strength, bool committed)
     {
-        if (_applying) return;
+        // 暂停态滑块是只读的，任何意外的值变化都不应该偷偷把夜间模式打开
+        if (_applying || !_settings.Enabled) return;
         ApplyStrength(row.Target, strength);
         if (committed) ScheduleSave();
     }
@@ -319,6 +357,9 @@ internal sealed class TrayAppContext : ApplicationContext
 
     private void ApplyToAll(int strength)
     {
+        // 菜单里主动选强度＝明确要用，顺手解除暂停
+        if (!_settings.Enabled) SetEnabled(true);
+
         foreach (var target in _gamma.Targets)
             ApplyStrength(target, strength);
     }
@@ -361,7 +402,7 @@ internal sealed class TrayAppContext : ApplicationContext
             _hotkeyWarned = true;
             try
             {
-                _tray.ShowBalloonTip(4000, "NightTint 快捷键被占用",
+                _tray.ShowBalloonTip(4000, $"{AppInfo.DisplayName} 快捷键被占用",
                     "Ctrl+Alt+Shift+↑/↓ 注册失败，可能被其它软件占用；Ctrl+Alt+B 打开面板仍然可用。", ToolTipIcon.Warning);
             }
             catch { }
@@ -442,10 +483,22 @@ internal sealed class TrayAppContext : ApplicationContext
         {
             int saved = _settings.RestoreOnStartup ? _settings.GetSavedStrength(target.Key) : -1;
             target.Strength = saved >= 0 ? saved : 0;
-            _applier.Set(target.Key, target.Kelvin);
         }
 
+        ApplyCurrentState();
         UpdateTrayIcon();
+    }
+
+    /// <summary>
+    /// 按显示器当前的 Strength 重新下发实际色温；暂停时一律下发中性白
+    /// （不动 Strength 本身，所以重新启用后位置原样还原）。
+    /// </summary>
+    private void ApplyCurrentState()
+    {
+        int neutral = ColorTemperature.NeutralKelvin;
+        foreach (var target in _gamma.Targets)
+            _applier.Set(target.Key, _settings.Enabled ? target.Kelvin : neutral);
+
         if (_flyout is { Visible: true }) _flyout.SyncValues();
     }
 
@@ -458,12 +511,17 @@ internal sealed class TrayAppContext : ApplicationContext
         var targets = _gamma.Targets;
         int strength = targets.Count > 0 ? (int)Math.Round(targets.Average(t => t.Strength)) : 0;
         int kelvin = ColorTemperature.StrengthToKelvin(strength);
+        bool paused = !_settings.Enabled;
 
-        var icon = TrayIconFactory.Create(kelvin);
+        var icon = TrayIconFactory.Create(kelvin, paused);
         var previous = _trayIcon;
         _trayIcon = icon;
         _tray.Icon = icon;
-        _tray.Text = strength <= 0 ? "NightTint · 夜间模式关闭" : $"NightTint · {strength}% ({kelvin}K)";
+        _tray.Text = paused
+            ? $"{AppInfo.DisplayName} · 已暂停"
+            : strength <= 0
+                ? $"{AppInfo.DisplayName} · 夜间模式关闭"
+                : $"{AppInfo.DisplayName} · {strength}% ({kelvin}K)";
         previous?.Dispose();
     }
 
@@ -501,8 +559,8 @@ internal sealed class TrayAppContext : ApplicationContext
         if (_settings.FirstRunTipShown) return;
         try
         {
-            _tray.ShowBalloonTip(5000, "NightTint 已就绪",
-                "左键点托盘图标打开面板；拖滑块调强度，0 = 关闭，100 = 最暖。", ToolTipIcon.None);
+            _tray.ShowBalloonTip(5000, $"{AppInfo.DisplayName} 已就绪",
+                "左键点托盘图标打开面板；拖滑块调强度，0 = 关闭，100 = 最暖。右键菜单第一项可临时停用。", ToolTipIcon.None);
             _settings.FirstRunTipShown = true;
             ScheduleSave();
         }

@@ -1,3 +1,5 @@
+using NightTint.Core;
+
 namespace NightTint;
 
 internal static class Program
@@ -7,9 +9,15 @@ internal static class Program
     [STAThread]
     private static void Main()
     {
-        // 单实例：重复启动直接退出，避免出现两个托盘图标
+        string? command = ParseCommand(Environment.GetCommandLineArgs());
+
+        // 单实例：已有实例在跑就把命令转给它（--off / --show 对正在运行的托盘同样有效）
         using var mutex = new Mutex(true, MutexName, out bool createdNew);
-        if (!createdNew) return;
+        if (!createdNew)
+        {
+            if (command is not null) InstancePipe.TrySend(command);
+            return;
+        }
 
         Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
         Application.EnableVisualStyles();
@@ -21,17 +29,40 @@ internal static class Program
             if (e.ExceptionObject is Exception ex) ShowError(ex);
         };
 
-        using var context = new TrayAppContext();
+        using var context = new TrayAppContext(command);
         Application.Run(context);
 
         GC.KeepAlive(mutex);
+    }
+
+    /// <summary>把命令行参数归一化成内部命令名。</summary>
+    private static string? ParseCommand(string[] args)
+    {
+        foreach (string arg in args.Skip(1))
+        {
+            switch (arg.Trim().ToLowerInvariant())
+            {
+                case "--show":
+                case "-s":
+                    return "show";
+                case "--settings":
+                    return "settings";
+                case "--on":
+                    return "on";
+                case "--off":
+                    return "off";
+                case "--toggle":
+                    return "toggle";
+            }
+        }
+        return null;
     }
 
     private static void ShowError(Exception ex)
     {
         try
         {
-            MessageBox.Show($"NightTint 发生未处理的错误：\n\n{ex.Message}", "NightTint",
+            MessageBox.Show($"{AppInfo.DisplayName} 发生未处理的错误：\n\n{ex.Message}", AppInfo.DisplayName,
                 MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
         catch

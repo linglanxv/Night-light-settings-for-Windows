@@ -8,6 +8,7 @@ namespace NightTint.UI;
 /// </summary>
 internal sealed class SettingsForm : Form
 {
+    private readonly ToggleRow _enabled;
     private readonly ToggleRow _startup;
     private readonly ToggleRow _wheel;
     private readonly ToggleRow _hotkeys;
@@ -20,6 +21,7 @@ internal sealed class SettingsForm : Form
     private bool _dragging;
     private Point _dragOffset;
 
+    public event Action<bool>? EnabledToggled;
     public event Action<bool>? StartupToggled;
     public event Action<bool>? WheelToggled;
     public event Action<bool>? HotkeysToggled;
@@ -36,11 +38,14 @@ internal sealed class SettingsForm : Form
         KeyPreview = true;
         AutoScaleMode = AutoScaleMode.None;
         BackColor = Theme.Background;
-        Text = "NightTint 设置";
+        Text = $"{AppInfo.DisplayName} · 设置";
 
         _titleFont = Theme.UiFont(15f, FontStyle.Bold);
         _hintFont = Theme.UiFont(11f);
         _glyphFont = new Font("Segoe MDL2 Assets", 13f, FontStyle.Regular, GraphicsUnit.Pixel);
+
+        _enabled = new ToggleRow("夜间模式已启用", true);
+        _enabled.Toggled += (_, v) => EnabledToggled?.Invoke(v);
 
         _startup = new ToggleRow("开机自动启动", true);
         _startup.Toggled += (_, v) => StartupToggled?.Invoke(v);
@@ -54,7 +59,7 @@ internal sealed class SettingsForm : Form
         _restore = new ToggleRow("启动时恢复上次强度", true);
         _restore.Toggled += (_, v) => RestoreToggled?.Invoke(v);
 
-        Controls.AddRange(new Control[] { _startup, _wheel, _hotkeys, _restore });
+        Controls.AddRange(new Control[] { _enabled, _startup, _wheel, _hotkeys, _restore });
         Relayout();
     }
 
@@ -62,8 +67,9 @@ internal sealed class SettingsForm : Form
 
     private int Px(float value) => (int)Math.Round(value * DpiScale);
 
-    public void SetStates(bool startup, bool wheel, bool hotkeys, bool restore)
+    public void SetStates(bool enabled, bool startup, bool wheel, bool hotkeys, bool restore)
     {
+        _enabled.Checked = enabled;
         _startup.Checked = startup;
         _wheel.Checked = wheel;
         _hotkeys.Checked = hotkeys;
@@ -78,7 +84,7 @@ internal sealed class SettingsForm : Form
         int footer = Px(34);
         int rowHeight = Px(38);
 
-        var rows = new[] { _startup, _wheel, _hotkeys, _restore };
+        var rows = new[] { _enabled, _startup, _wheel, _hotkeys, _restore };
         ClientSize = new Size(width, header + rows.Length * rowHeight + footer);
 
         int y = header;
@@ -128,6 +134,10 @@ internal sealed class SettingsForm : Form
         TextRenderer.DrawText(g, "设置", _titleFont,
             new Rectangle(pad, Px(12), Px(200), Px(24)),
             Theme.Text, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix);
+
+        TextRenderer.DrawText(g, AppInfo.ChineseName, _hintFont,
+            new Rectangle(pad + Px(52), Px(15), Px(230), Px(20)),
+            Theme.TextFaint, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.EndEllipsis);
 
         int glyphSize = Px(26);
         _closeHitRect = new Rectangle(Width - pad - glyphSize, Px(11), glyphSize, glyphSize);
