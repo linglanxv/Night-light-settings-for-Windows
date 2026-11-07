@@ -1,8 +1,16 @@
-# Night light settings 🌙
+# Night light settings for Windows 🌙
 
 **Windows 夜间模式强度调节任务栏托盘** —— Windows 10 / 11 托盘常驻的夜间模式（色温）强度调节小工具。类似 Twinkle Tray 的交互，但调的是暖色强度，并且**每台显示器记住你最后一次的设置**：重启、锁屏、休眠唤醒、拔插显示器之后自动恢复。
 
 ![screenshot](docs/screenshot.png)
+
+## 下载与安装
+
+1. 到 [Releases](https://github.com/linglanxv/Night-light-settings-for-Windows/releases) 下载最新的 `NightTint.exe`（单文件，约 230KB，需要 .NET 8 Desktop Runtime）；
+2. 放到一个固定目录（例如 `%LOCALAPPDATA%\Programs\NightTint\`）再双击运行，托盘就会出现图标；
+3. 右键托盘图标 →「设置…」里打开「开机自动启动」即可常驻。
+
+> 也可以自行编译，见文末「从源码构建」。
 
 ## 功能
 
@@ -94,6 +102,10 @@ $env:PATH = "$env:USERPROFILE\.dotnet8;$env:PATH"
 
 - 每次推送到 `main` 自动构建，产物在 Actions 的 Artifacts 下载；
 - 推送 `v*` 标签（如 `v1.1.0`）自动创建 Release 并附上 `NightTint.exe`。
+
+```bash
+git clone https://github.com/linglanxv/Night-light-settings-for-Windows.git
+```
 
 ## 已知限制
 
