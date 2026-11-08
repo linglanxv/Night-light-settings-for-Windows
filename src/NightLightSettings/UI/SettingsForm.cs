@@ -1,7 +1,7 @@
 using System.Drawing.Drawing2D;
-using NightTint.Core;
+using NightLightSettings.Core;
 
-namespace NightTint.UI;
+namespace NightLightSettings.UI;
 
 /// <summary>
 /// 独立设置面板。托盘滑块面板只放滑块，开关类选项都在这里。

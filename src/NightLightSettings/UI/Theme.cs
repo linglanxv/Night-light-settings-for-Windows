@@ -1,6 +1,6 @@
 using System.Drawing.Drawing2D;
 
-namespace NightTint.UI;
+namespace NightLightSettings.UI;
 
 /// <summary>暗色主题配色与绘制小工具。</summary>
 internal static class Theme

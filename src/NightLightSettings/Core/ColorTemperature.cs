@@ -1,4 +1,4 @@
-namespace NightTint.Core;
+namespace NightLightSettings.Core;
 
 /// <summary>
 /// 色温计算。

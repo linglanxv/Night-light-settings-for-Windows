@@ -7,18 +7,18 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
-    <RootNamespace>NightTint</RootNamespace>
-    <AssemblyName>NightTint</AssemblyName>
+    <RootNamespace>NightLightSettings</RootNamespace>
+    <AssemblyName>NightLightSettings</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
-    <Version>1.1.0</Version>
-    <AssemblyVersion>1.1.0.0</AssemblyVersion>
-    <FileVersion>1.1.0.0</FileVersion>
-    <AssemblyTitle>Night light settings</AssemblyTitle>
-    <Product>Night light settings</Product>
+    <Version>1.2.0</Version>
+    <AssemblyVersion>1.2.0.0</AssemblyVersion>
+    <FileVersion>1.2.0.0</FileVersion>
+    <AssemblyTitle>Night light settings for Windows</AssemblyTitle>
+    <Product>Night light settings for Windows</Product>
     <Company>linglanxv</Company>
     <Copyright>Copyright © 2026 linglanxv · MIT License</Copyright>
-    <Description>Windows 夜间模式强度调节任务栏托盘 - Windows 10/11 night light strength tray slider with per-monitor memory</Description>
+    <Description>Windows 夜间模式强度调节任务栏托盘｜Tray night-light strength slider for Windows 10/11 with per-monitor memory</Description>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
     <InvariantGlobalization>true</InvariantGlobalization>
     <DebugType>embedded</DebugType>

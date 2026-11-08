@@ -1,7 +1,7 @@
 using System.Drawing.Drawing2D;
-using NightTint.Core;
+using NightLightSettings.Core;
 
-namespace NightTint.UI;
+namespace NightLightSettings.UI;
 
 /// <summary>
 /// 一行夜间模式强度控制：显示器名称 + 强度读数 + 中性→暖色渐变滑轨。

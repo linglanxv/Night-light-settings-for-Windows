@@ -1,4 +1,4 @@
-namespace NightTint.UI;
+namespace NightLightSettings.UI;
 
 /// <summary>面板底部的开关行（目前用于「开机自动启动」「托盘滚轮调节」）。</summary>
 internal sealed class ToggleRow : Control

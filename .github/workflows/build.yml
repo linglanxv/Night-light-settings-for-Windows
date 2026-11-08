@@ -24,23 +24,23 @@ jobs:
           dotnet-version: 8.0.x
 
       - name: Restore
-        run: dotnet restore src/NightTint
+        run: dotnet restore src/NightLightSettings
 
       - name: Build
-        run: dotnet build src/NightTint -c Release --no-restore
+        run: dotnet build src/NightLightSettings -c Release --no-restore
 
       - name: Publish (single file)
-        run: dotnet publish src/NightTint -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -o publish
+        run: dotnet publish src/NightLightSettings -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -o publish
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: NightTint-win-x64
-          path: publish/NightTint.exe
+          name: NightLightSettings-win-x64
+          path: publish/NightLightSettings.exe
 
       - name: Attach to release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: publish/NightTint.exe
+          files: publish/NightLightSettings.exe
           generate_release_notes: true

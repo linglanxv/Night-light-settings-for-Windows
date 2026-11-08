@@ -1,4 +1,4 @@
-namespace NightTint.Core;
+namespace NightLightSettings.Core;
 
 /// <summary>
 /// 全局快捷键宿主（消息窗口）。Ctrl+Alt+Shift+↑ / ↓ 调节所有显示器色温。
@@ -17,7 +17,7 @@ internal sealed class HotKeyWindow : NativeWindow, IDisposable
     {
         var cp = new CreateParams
         {
-            Caption = "NightTintHotKeyWindow",
+            Caption = "NightLightSettingsHotKeyWindow",
             Parent = (IntPtr)(-3) // HWND_MESSAGE：消息窗口，不显示也不进任务栏
         };
         CreateHandle(cp);

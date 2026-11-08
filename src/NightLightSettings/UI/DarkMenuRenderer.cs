@@ -1,4 +1,4 @@
-namespace NightTint.UI;
+namespace NightLightSettings.UI;
 
 /// <summary>暗色右键菜单。</summary>
 internal sealed class DarkColorTable : ProfessionalColorTable

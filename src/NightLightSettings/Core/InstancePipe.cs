@@ -1,6 +1,6 @@
 using System.IO.Pipes;
 
-namespace NightTint.Core;
+namespace NightLightSettings.Core;
 
 /// <summary>
 /// 单实例之间的轻量命令通道（命名管道）。
@@ -9,7 +9,7 @@ namespace NightTint.Core;
 /// </summary>
 internal static class InstancePipe
 {
-    private const string PipeName = "NightTint.Ipc";
+    private const string PipeName = "NightLightSettings.Ipc";
 
     /// <summary>把命令发给已在运行的实例；没有实例在跑或超时返回 false。</summary>
     public static bool TrySend(string command, int timeoutMs = 1500)
@@ -52,7 +52,7 @@ internal static class InstancePipe
         })
         {
             IsBackground = true,
-            Name = "NightTint.Ipc"
+            Name = "NightLightSettings.Ipc"
         };
         thread.Start();
     }

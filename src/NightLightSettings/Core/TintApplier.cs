@@ -1,4 +1,4 @@
-namespace NightTint.Core;
+namespace NightLightSettings.Core;
 
 /// <summary>
 /// 色温写入线程 + 守护线程逻辑。
@@ -20,7 +20,7 @@ internal sealed class TintApplier : IDisposable
         _thread = new Thread(Loop)
         {
             IsBackground = true,
-            Name = "NightTint.TintApplier",
+            Name = "NightLightSettings.TintApplier",
             Priority = ThreadPriority.BelowNormal
         };
         _thread.Start();

@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 
-namespace NightTint.Core;
+namespace NightLightSettings.Core;
 
 /// <summary>
 /// 托盘图标滚轮支持。NotifyIcon 本身收不到滚轮事件，

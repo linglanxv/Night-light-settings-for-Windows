@@ -6,10 +6,13 @@
 
 ## 下载与安装
 
-1. 到 [Releases](https://github.com/linglanxv/Night-light-settings-for-Windows/releases) 下载最新的 `NightTint.exe`（单文件，约 230KB，需要 .NET 8 Desktop Runtime）；
-2. 放到一个固定目录（例如 `%LOCALAPPDATA%\Programs\NightTint\`）再双击运行，托盘就会出现图标；
+1. 到 [Releases](https://github.com/linglanxv/Night-light-settings-for-Windows/releases) 下载最新的 `NightLightSettings.exe`（单文件，约 230KB，需要 .NET 8 Desktop Runtime）；
+2. 放到一个固定目录（例如 `%LOCALAPPDATA%\Programs\NightLightSettings\`）再双击运行，托盘就会出现图标；
 3. 右键托盘图标 →「设置…」里打开「开机自动启动」即可常驻。
 
+> **从旧版升级**：v1.2.0 起程序改了名（`NightTint.exe` → `NightLightSettings.exe`）。
+> 直接覆盖运行即可，配置与每台显示器的强度记忆会自动从旧目录迁移过来，旧的开机自启项也会自动清掉。
+>
 > 也可以自行编译，见文末「从源码构建」。
 
 ## 功能
@@ -30,11 +33,11 @@
 - **命令行控制**（对正在运行的实例生效，可做成快捷方式 / 脚本 / Stream Deck 按钮）：
 
   ```text
-  NightTint.exe --show      弹出面板
-  NightTint.exe --settings  打开设置
-  NightTint.exe --on        启用夜间模式
-  NightTint.exe --off       临时暂停（保留滑块位置）
-  NightTint.exe --toggle    在启用 / 暂停之间切换
+  NightLightSettings.exe --show      弹出面板
+  NightLightSettings.exe --settings  打开设置
+  NightLightSettings.exe --on        启用夜间模式
+  NightLightSettings.exe --off       临时暂停（保留滑块位置）
+  NightLightSettings.exe --toggle    在启用 / 暂停之间切换
   ```
 
 - **轻量**：.NET 8 原生 WinForms，单文件约 230KB，无 Electron，启动不到 1 秒。
@@ -67,7 +70,7 @@
 | `Ctrl+Alt+B` | 全局弹出面板 |
 | `--on / --off / --toggle` | 命令行临时开关（保留记忆） |
 
-配置文件：`%LOCALAPPDATA%\NightTint\settings.json`（每台显示器的强度、暂停状态都记在这里）。
+配置文件：`%LOCALAPPDATA%\NightLightSettings\settings.json`（每台显示器的强度、暂停状态都记在这里）。
 
 ## 从源码构建
 
@@ -75,15 +78,15 @@
 
 ```bash
 # 调试运行
-dotnet run --project src/NightTint -c Release
+dotnet run --project src/NightLightSettings -c Release
 
 # 发布单文件（约 230KB）
-dotnet publish src/NightTint -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -o publish
+dotnet publish src/NightLightSettings -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -o publish
 
 # 直接弹出面板 / 设置面板 / 临时开关（可做成快捷方式）
-NightTint.exe --show
-NightTint.exe --settings
-NightTint.exe --toggle
+NightLightSettings.exe --show
+NightLightSettings.exe --settings
+NightLightSettings.exe --toggle
 ```
 
 > 发布产物依赖已安装的 .NET 8 Desktop Runtime；想要完全绿色版把 `--self-contained false` 改成 `true`（体积约 150MB）。
@@ -101,7 +104,7 @@ $env:PATH = "$env:USERPROFILE\.dotnet8;$env:PATH"
 仓库里带了 [.github/workflows/build.yml](.github/workflows/build.yml)：
 
 - 每次推送到 `main` 自动构建，产物在 Actions 的 Artifacts 下载；
-- 推送 `v*` 标签（如 `v1.1.0`）自动创建 Release 并附上 `NightTint.exe`。
+- 推送 `v*` 标签（如 `v1.2.0`）自动创建 Release 并附上 `NightLightSettings.exe`。
 
 ```bash
 git clone https://github.com/linglanxv/Night-light-settings-for-Windows.git

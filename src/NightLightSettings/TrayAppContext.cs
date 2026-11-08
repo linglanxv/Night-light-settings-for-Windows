@@ -1,10 +1,10 @@
 using System.Diagnostics;
 using Microsoft.Win32;
-using NightTint.Core;
-using NightTint.Settings;
-using NightTint.UI;
+using NightLightSettings.Core;
+using NightLightSettings.Settings;
+using NightLightSettings.UI;
 
-namespace NightTint;
+namespace NightLightSettings;
 
 /// <summary>
 /// 托盘主控：图标、夜间模式面板、快捷键、滚轮、强度记忆、显示器热插拔 / 锁屏 / 唤醒后重新套用。

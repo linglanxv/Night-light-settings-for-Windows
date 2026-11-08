@@ -1,10 +1,10 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace NightTint.Settings;
+namespace NightLightSettings.Settings;
 
 /// <summary>
-/// 配置与「强度记忆」。存放在 %LOCALAPPDATA%\NightTint\settings.json。
+/// 配置与「强度记忆」。存放在 %LOCALAPPDATA%\NightLightSettings\settings.json。
 /// 每台显示器按稳定 Key 记住最后一次的强度（0~100），开机 / 重新接上显示器时自动恢复。
 /// </summary>
 internal sealed class AppSettings
@@ -42,10 +42,33 @@ internal sealed class AppSettings
 
     [JsonIgnore]
     public static string SettingsDirectory =>
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "NightTint");
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "NightLightSettings");
 
     [JsonIgnore]
     public static string FilePath => Path.Combine(SettingsDirectory, "settings.json");
+
+    /// <summary>改名前的配置目录（%LOCALAPPDATA%\NightTint），只用于一次性迁移。</summary>
+    private static string LegacyDirectory =>
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "NightTint");
+
+    /// <summary>把旧目录里的配置搬过来，保证改名 / 改 exe 名之后强度记忆不丢。</summary>
+    private static void MigrateLegacy()
+    {
+        try
+        {
+            string legacyFile = Path.Combine(LegacyDirectory, "settings.json");
+            if (File.Exists(FilePath) || !File.Exists(legacyFile)) return;
+
+            Directory.CreateDirectory(SettingsDirectory);
+            File.Copy(legacyFile, FilePath, overwrite: false);
+
+            try { Directory.Delete(LegacyDirectory, recursive: true); } catch { }
+        }
+        catch
+        {
+            // 迁移失败就用默认配置，不影响使用
+        }
+    }
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -56,6 +79,7 @@ internal sealed class AppSettings
     {
         try
         {
+            MigrateLegacy();
             if (!File.Exists(FilePath)) return new AppSettings();
 
             var loaded = JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(FilePath), JsonOptions);

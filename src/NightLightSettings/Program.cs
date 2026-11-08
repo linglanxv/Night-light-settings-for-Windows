@@ -1,10 +1,10 @@
-using NightTint.Core;
+using NightLightSettings.Core;
 
-namespace NightTint;
+namespace NightLightSettings;
 
 internal static class Program
 {
-    private const string MutexName = @"Global\NightTint.SingleInstance";
+    private const string MutexName = @"Global\NightLightSettings.SingleInstance";
 
     [STAThread]
     private static void Main()

@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 
-namespace NightTint.Core;
+namespace NightLightSettings.Core;
 
 /// <summary>Win32 互操作声明（色温调节走 GDI gamma ramp，不需要 DDC/CI 或管理员权限）。</summary>
 internal static class Native

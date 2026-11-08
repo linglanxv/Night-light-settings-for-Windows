@@ -1,8 +1,8 @@
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
-using NightTint.Core;
+using NightLightSettings.Core;
 
-namespace NightTint.UI;
+namespace NightLightSettings.UI;
 
 /// <summary>
 /// 动态托盘图标：一个填满当前色温颜色的圆。

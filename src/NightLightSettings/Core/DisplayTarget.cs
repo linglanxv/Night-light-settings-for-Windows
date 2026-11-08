@@ -1,4 +1,4 @@
-namespace NightTint.Core;
+namespace NightLightSettings.Core;
 
 /// <summary>一台显示器（一个 GDI 设备）及其当前夜间模式强度。</summary>
 internal sealed class DisplayTarget

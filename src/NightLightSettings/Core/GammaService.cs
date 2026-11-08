@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 
-namespace NightTint.Core;
+namespace NightLightSettings.Core;
 
 /// <summary>
 /// 显示器枚举 + gamma ramp 读写。

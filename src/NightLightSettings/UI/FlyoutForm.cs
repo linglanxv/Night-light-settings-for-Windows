@@ -1,7 +1,7 @@
 using System.Drawing.Drawing2D;
-using NightTint.Core;
+using NightLightSettings.Core;
 
-namespace NightTint.UI;
+namespace NightLightSettings.UI;
 
 /// <summary>
 /// 托盘弹出的夜间模式面板（Twinkle Tray 风格 flyout）：
