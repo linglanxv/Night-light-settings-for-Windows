@@ -12,6 +12,7 @@ internal sealed class TintRow : Control
     private readonly DisplayTarget _target;
     private readonly Font _nameFont;
     private readonly Font _valueFont;
+    private readonly int _valueWidth;
     private int _strength;
     private bool _dragging;
     private bool _hovering;
@@ -31,7 +32,10 @@ internal sealed class TintRow : Control
 
         BackColor = Theme.Background;
         _nameFont = Theme.UiFont(13f);
-        _valueFont = Theme.UiFont(12.5f);
+        // Twinkle Tray 同款：读数用大号粗体数字，宽度按 "100" 预留，拖动时滑轨长度不跳动
+        _valueFont = Theme.UiFont(23f, FontStyle.Bold);
+        _valueWidth = TextRenderer.MeasureText("100", _valueFont,
+            new Size(400, 80), TextFormatFlags.NoPadding | TextFormatFlags.SingleLine).Width + 2;
         TabStop = true;
         Cursor = Cursors.Hand;
     }
@@ -70,13 +74,26 @@ internal sealed class TintRow : Control
 
     private int Px(float value) => (int)Math.Round(value * DpiScale);
 
-    private int TrackTop => Px(42);
+    private int TrackLeft => Px(2);
+
+    /// <summary>滑轨长度：让出右侧大号数字的位置。</summary>
+    private int TrackWidth => Math.Max(Px(60), Width - Px(2) * 2 - _valueWidth - Px(12));
+
+    private int TrackTop => SliderBandTop + (SliderBandHeight - TrackHeight) / 2;
 
     private int TrackHeight => Px(6);
 
     private int ThumbRadius => Px(8);
 
-    public int PreferredHeight => Px(64);
+    public int PreferredHeight => Px(66);
+
+    /// <summary>显示器名称行高度。</summary>
+    private int NameRowHeight => Px(22);
+
+    /// <summary>滑轨 + 大号读数的整行区域。</summary>
+    private int SliderBandTop => NameRowHeight + Px(4);
+
+    private int SliderBandHeight => Px(38);
 
     public void SetStrength(int strength, bool commit)
     {
@@ -98,19 +115,21 @@ internal sealed class TintRow : Control
         int padX = Px(2);
         bool on = _strength > 0;
 
-        var nameRect = new Rectangle(padX, Px(2), Math.Max(10, Width - padX * 2 - Px(118)), Px(20));
+        // 显示器名称独占一行
+        var nameRect = new Rectangle(padX, 0, Math.Max(Px(40), Width - padX * 2), NameRowHeight);
         TextRenderer.DrawText(g, string.IsNullOrWhiteSpace(_target.Name) ? "显示器" : _target.Name,
             _nameFont, nameRect, _target.Applicable ? Theme.Text : Theme.TextFaint,
             TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
 
-        string valueText = $"{_strength}% · {ColorTemperature.StrengthToKelvin(_strength)}K";
-        var valueRect = new Rectangle(Width - padX - Px(116), Px(2), Px(116), Px(20));
-        TextRenderer.DrawText(g, valueText, _valueFont, valueRect,
+        // Twinkle Tray 同款：强度数字紧贴滑轨末端，大号粗体，不带百分号
+        var valueRect = new Rectangle(Width - padX - _valueWidth, SliderBandTop - Px(2),
+            _valueWidth, SliderBandHeight);
+        TextRenderer.DrawText(g, _strength.ToString(), _valueFont, valueRect,
             on ? Theme.Text : Theme.TextDim,
-            TextFormatFlags.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix);
+            TextFormatFlags.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding);
 
-        int trackX = padX;
-        int trackWidth = Width - padX * 2;
+        int trackX = TrackLeft;
+        int trackWidth = TrackWidth;
         int trackY = TrackTop;
         int trackH = TrackHeight;
         float radius = trackH / 2f;
@@ -258,8 +277,8 @@ internal sealed class TintRow : Control
 
     private void ApplyMouseX(int x, bool commit)
     {
-        int padX = Px(2);
-        int trackWidth = Width - padX * 2;
+        int padX = TrackLeft;
+        int trackWidth = TrackWidth;
         int r = ThumbRadius;
         float usable = Math.Max(1f, trackWidth - r * 2f);
         float ratio = Math.Clamp((x - padX - r) / usable, 0f, 1f);
